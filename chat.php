@@ -283,6 +283,7 @@ while( true )
 	}
 
 	curl_close( $curl );
-}
+
+} // wend of main loop
 
 // EOF
