@@ -324,7 +324,13 @@ while( true )
 
 		$MESSAGES[] = [ 'role' => 'user' , 'content' => $PROMPT ];
 
-		echo PHP_EOL.$AGENT_NAME.':'.PHP_EOL;
+		echo PHP_EOL.$AGENT_NAME.':';
+
+		if ( in_array( 'tools' , $CURRENT_MODEL_INFO->capabilities ) )
+		{
+			echo " (tools) ";
+		}
+		echo PHP_EOL;
 	}
 
 	$curl = curl_init();
@@ -337,8 +343,11 @@ while( true )
 		'options' => [
 			'num_ctx' => 8192 ,
 		],
+	];
 
-		'tools' => [
+	if ( in_array( 'tools' , $CURRENT_MODEL_INFO->capabilities ) )
+	{
+		$CURL_POSTFIELDS[ 'tools' ] =  [
 			[ 'type' => 'function' ,
 				'function' => [
 					'name' => 'get_datetime',
@@ -346,8 +355,8 @@ while( true )
 					//'parameters' => [],
 				],
 			],
-		],
-	];
+		];
+	}
 
 
 	curl_setopt_array( $curl , 
@@ -377,7 +386,7 @@ while( true )
 					{
 						$function_name = $tool_call->function->name ;
 
-						echo "\033[32m[TOOL]\033[0m->$function_name".PHP_EOL;
+						echo "\033[34m[TOOL]\033[0m->$function_name".PHP_EOL;
 						
 						switch( $function_name )
 						{
