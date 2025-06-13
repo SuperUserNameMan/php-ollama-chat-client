@@ -280,6 +280,8 @@ while( true )
 						echo PHP_EOL;
 						echo "\t/clear          Clear the terminal.".PHP_EOL;
 						echo PHP_EOL;
+						echo "\t/messages		Display the history for debug purpose.".PHP_EOL;
+						echo PHP_EOL;
 						echo "\t/new            Start a new chat.".PHP_EOL;
 						echo PHP_EOL;
 						echo "\t/pick [id]".PHP_EOL;
@@ -368,7 +370,7 @@ while( true )
 		CURLOPT_RETURNTRANSFER => FALSE ,
 		CURLOPT_WRITEFUNCTION => function( $curl , $data )
 		{
-			global $MESSAGES;
+			global $MESSAGES , $CURRENT_MODEL_ID ;
 
 			static $ANSWER = '';
 
@@ -392,7 +394,11 @@ while( true )
 						{
 							case 'get_datetime' :
 								$date_time = date( DATE_COOKIE );
-								$MESSAGES[] = [ 'role' => 'tool' , 'content' => "$function_name = $date_time" ];
+								$MESSAGES[] = [ 
+									'role' => 'tool' ,
+									'content' => "$function_name = $date_time" ,
+									'model' => $CURRENT_MODEL_ID , // not required by Ollama, but allow to remember which model acted
+								];
 							break;
 						}
 					}
@@ -406,7 +412,11 @@ while( true )
 
 					if ( $data->done )
 					{
-						$MESSAGES[] = [ 'role' => $data->message->role , 'content' => $ANSWER ];
+						$MESSAGES[] = [
+							'role' => $data->message->role ,
+							'content' => $ANSWER ,
+							'model' => $CURRENT_MODEL_ID , // not required by Ollama, but allow to remember which model answered
+						];
 						echo PHP_EOL.PHP_EOL;
 
 						$ANSWER = '';
