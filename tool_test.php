@@ -47,6 +47,38 @@ if ( ! function_exists( 'json_validate' ) ) // only available since PHP8.3
 }
 
 
+function ollama_version( string $SERVER ) : string
+{
+	$data = file_get_contents( "$SERVER/api/version" );
+
+	$version = "";
+
+	if ( $data === false )
+	{
+		error( __LINE__ , "Server did not reply" );
+	}
+	else
+	if ( ! json_validate( $data ) )
+	{
+		error( __LINE__ , json_last_error_msg() );
+	}
+	else
+	{
+		$version = json_decode( $data );
+
+		if ( isset( $version->version ) )
+		{
+			$version = $version->version ;
+		}
+		else
+		{
+			error( __LINE__ , "Server did not send version number." );
+		}
+	}
+
+	return $version ;
+}
+
 function ollama_list( string $SERVER ) : array|object
 {
 	$data = file_get_contents( "$SERVER/api/tags" );
@@ -78,11 +110,53 @@ function ollama_list( string $SERVER ) : array|object
 	return $list ;
 }
 
+function ollama_model_info( string $SERVER , string $MODEL_NAME ) : array|object
+{
+	global $OLLAMA_SERVER ;
+
+	$curl = curl_init();
+
+	$response = [];
+
+	curl_setopt_array( $curl , 
+	[
+		CURLOPT_URL => "$OLLAMA_SERVER/api/show" ,
+		CURLOPT_POST => 1 ,
+		CURLOPT_POSTFIELDS => json_encode([
+			'model' => $MODEL_NAME ,
+		]),
+		CURLOPT_HTTPHEADER => [ 'Content-Type: application/json' ] ,
+		CURLOPT_RETURNTRANSFER => TRUE ,
+	]);
+
+	$response = curl_exec( $curl );
+
+	if ( $response === false )
+	{
+		error( __LINE__ ,  'cURL : '.curl_error( $curl ) );
+	}
+	else
+	{
+		if ( ! json_validate( $response ) )
+		{
+			error( __LINE__ , 'JSON : '.json_last_error_msg() );
+		}
+		else
+		{
+			$response = json_decode( $response );
+		}
+	}
+
+	curl_close( $curl );
+
+	return $response ;
+}
+
 function pick_a_model( string $SERVER , ?string $WANT_MODEL_ID = null )
 {
-	global $OLLAMA_SERVER, $CURRENT_MODEL_ID, $AGENTNAME ;
+	global $OLLAMA_SERVER, $CURRENT_MODEL_ID, $CURRENT_MODEL_INFO , $AGENT_NAME ;
 
-	$AGENTNAME = '';
+	$AGENT_NAME = '';
 	$CURRENT_MODEL_ID = null ;
 
 	$AVAILABLE_MODELS = ollama_list( $SERVER );
@@ -151,14 +225,28 @@ function pick_a_model( string $SERVER , ?string $WANT_MODEL_ID = null )
 	}
 	while( $CURRENT_MODEL_ID === null );
 
-	$AGENTNAME = "\033[34m[".strtoupper($CURRENT_MODEL_ID)."]\033[0m";
+	$AGENT_NAME = "\033[34m[".strtoupper($CURRENT_MODEL_ID)."]\033[0m";
 
-	echo PHP_EOL."$AGENTNAME is selected.".PHP_EOL;
+	echo PHP_EOL."$AGENT_NAME is selected.".PHP_EOL;
+
+	$CURRENT_MODEL_INFO = ollama_model_info( $OLLAMA_SERVER , $CURRENT_MODEL_ID );
+
+	if ( isset( $CURRENT_MODEL_INFO->capabilities ) && ! empty( $CURRENT_MODEL_INFO->capabilities ) )
+	{
+		echo "Capabilities :".PHP_EOL ;
+		foreach( $CURRENT_MODEL_INFO->capabilities as $cap )
+		{
+			echo " - $cap".PHP_EOL ;
+		}
+	}
 }
 
 
 // ----- Main code -----------------------------------------------------------------------------------------------------
 
+echo "Ollama server  : $OLLAMA_SERVER".PHP_EOL;
+echo "Ollama version : ".ollama_version( $OLLAMA_SERVER );
+echo PHP_EOL ;
 
 pick_a_model( $OLLAMA_SERVER );
 
@@ -167,7 +255,7 @@ $MESSAGES = []; // message history
 while( true )
 {
 
-	if ( count( $MESSAGES ) == 0 || $MESSAGES[ count( $MESSAGES ) - 2 ]['role'] != 'tool' )
+	if ( count( $MESSAGES ) < 2 || $MESSAGES[ count( $MESSAGES ) - 2 ]['role'] != 'tool' )
 	{
 		do 
 		{
@@ -210,6 +298,11 @@ while( true )
 						$COMMAND = '';
 					break;
 
+					case '/messages':
+						print_r( $MESSAGES );
+						$COMMAND = '';
+					break;
+
 					case '/new' :
 						$MESSAGES = [];
 						echo PHP_EOL."-----------------------------------".PHP_EOL;
@@ -231,30 +324,37 @@ while( true )
 
 		$MESSAGES[] = [ 'role' => 'user' , 'content' => $PROMPT ];
 
-		echo PHP_EOL.$AGENTNAME.':'.PHP_EOL;
+		echo PHP_EOL.$AGENT_NAME.':'.PHP_EOL;
 	}
 
 	$curl = curl_init();
+
+	$CURL_POSTFIELDS = [
+		'model' => $CURRENT_MODEL_ID ,
+		'messages' => $MESSAGES ,
+		'stream' => true ,
+
+		'options' => [
+			'num_ctx' => 8192 ,
+		],
+
+		'tools' => [
+			[ 'type' => 'function' ,
+				'function' => [
+					'name' => 'get_datetime',
+					'description' => 'Get actual current date time in DATE_COOKIE format',
+					//'parameters' => [],
+				],
+			],
+		],
+	];
+
 
 	curl_setopt_array( $curl , 
 	[
 		CURLOPT_URL => "$OLLAMA_SERVER/api/chat" ,
 		CURLOPT_POST => 1 ,
-		CURLOPT_POSTFIELDS => json_encode([
-			'model' => $CURRENT_MODEL_ID ,
-			'messages' => $MESSAGES ,
-			'stream' => true ,
-
-			'tools' => [
-				[ 'type' => 'function' ,
-					'function' => [
-						'name' => 'get_datetime',
-						'description' => 'Get actual current date time in DATE_COOKIE format',
-						//'parameters' => [],
-					],
-				],
-			],
-		]) ,
+		CURLOPT_POSTFIELDS => json_encode( $CURL_POSTFIELDS ) ,
 		CURLOPT_HTTPHEADER => [ 'Content-Type: application/json' ] ,
 		CURLOPT_RETURNTRANSFER => FALSE ,
 		CURLOPT_WRITEFUNCTION => function( $curl , $data )
@@ -289,6 +389,7 @@ while( true )
 					}
 				}
 				else
+				if ( isset( $data->message->content ) )
 				{
 					echo $data->message->content ;
 
@@ -302,11 +403,15 @@ while( true )
 						$ANSWER = '';
 					}
 				}
+				else
+				{
+					error( __LINE__ , print_r( $data , true ) );
+				}
 
 				return $return;
 			}
 
-			echo 'Err JSON : '.json_last_error_msg().PHP_EOL ;
+			error( __LINE__ ,  'JSON : '.json_last_error_msg() ) ;
 			return 0 ;
 		},
 	]);
@@ -315,7 +420,7 @@ while( true )
 
 	if ( $response === false )
 	{
-		echo 'Err cURL : '.curl_error( $curl ).PHP_EOL ;
+		error( __LINE__ , 'cURL : '.curl_error( $curl ) );
 	}
 
 	curl_close( $curl );
