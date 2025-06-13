@@ -5,7 +5,7 @@ Very basic command line Ollama chat client written in simple PHP8.
 
 `php -e chat.php`
 
-`php -e tool_test.php` (the LLM has access to a tool function `get_datetime`.
+`php -e tool_test.php` (the LLM has access to a tool function `get_datetime`.)
 
 ### Requirements :
 
