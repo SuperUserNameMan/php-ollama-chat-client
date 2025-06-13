@@ -1,4 +1,4 @@
-<?php //TABS=4 
+<?php //TABS=4
 
 $OLLAMA_SERVER = "http://localhost:11434";
 
@@ -21,7 +21,7 @@ function warning( int $line_number, string $message )
 if ( PHP_MAJOR_VERSION != 8 )
 {
 	error( __LINE__ , "PHP version 8 required, but you could easily modify the code to make it compatible with other versions if you really want to." );
-	exit(0);
+	exit( __LINE__ );
 }
 
 if ( PHP_OS_FAMILY != 'Linux' )
@@ -38,7 +38,7 @@ foreach( $REQUIRED_PHP_EXTENSIONS as $extension )
 		$ok = false ;
 	}
 }
-if ( ! $ok ) exit( -1 );
+if ( ! $ok ) exit( __LINE__ );
 
 
 if ( ! function_exists( 'json_validate' ) ) // only available since PHP8.3
@@ -97,7 +97,7 @@ function pick_a_model( string $SERVER , ?string $WANT_MODEL_ID = null )
 	{
 		if ( $WANT_MODEL_ID === null )
 		{
-			echo PHP_EOL."Availale models :".PHP_EOL.PHP_EOL;
+			echo PHP_EOL."Available models :".PHP_EOL.PHP_EOL;
 
 			foreach( $AVAILABLE_MODELS->models as $index => $model )
 			{
