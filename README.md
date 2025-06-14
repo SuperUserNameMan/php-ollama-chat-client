@@ -25,4 +25,4 @@ Very basic command line Ollama chat client written in simple PHP8.
 
 - only tested on Linux MATE Terminal
 - uses terminal color codes (duno how it behaves on non compatible terminals)
-- tools function calling does not work with all models that prentend to have the `tools` capabitily (on all model i tested, only `qwen3:30b-a3b` and `llama3.2` are able to call tools, and sometimes `granite3.3`)
+- tools function calling does not work with all models that prentend to have the `tools` capabitily (on all model i tested, only `qwen3` and `llama3.2` are able to call tools, and sometimes `granite3.3`)
