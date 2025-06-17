@@ -242,6 +242,123 @@ function pick_a_model( string $SERVER , ?string $WANT_MODEL_ID = null )
 }
 
 
+function ollama_chat( string $OLLAMA_SERVER, string $CURRENT_MODEL_ID , array &$MESSAGES , bool $ENABLE_TOOLS )
+{
+	$curl = curl_init();
+
+	$CURL_POSTFIELDS = [
+		'model' => $CURRENT_MODEL_ID ,
+		'messages' => $MESSAGES ,
+		'stream' => true ,
+
+		'options' => [
+			'num_ctx' => 8192 ,
+		],
+	];
+
+	if ( $ENABLE_TOOLS )
+	{
+		$CURL_POSTFIELDS[ 'tools' ] =  [
+			[ 'type' => 'function' ,
+				'function' => [
+					'name' => 'get_datetime',
+					'description' => 'Get actual current date time in DATE_COOKIE format',
+					//'parameters' => [],
+				],
+			],
+		];
+	}
+
+
+	curl_setopt_array( $curl , 
+	[
+		CURLOPT_URL => "$OLLAMA_SERVER/api/chat" ,
+		CURLOPT_POST => 1 ,
+		CURLOPT_POSTFIELDS => json_encode( $CURL_POSTFIELDS ) ,
+		CURLOPT_HTTPHEADER => [ 'Content-Type: application/json' ] ,
+		CURLOPT_RETURNTRANSFER => FALSE ,
+		CURLOPT_WRITEFUNCTION => function( $curl , $data )
+		{
+			global $MESSAGES , $CURRENT_MODEL_ID ;
+
+			static $ANSWER = '';
+
+			if ( json_validate( $data ) )
+			{
+				$return = strlen( $data );
+
+				$data = json_decode( $data );
+
+				//print_r( $data );
+
+				if ( isset( $data->message->tool_calls ) )
+				{
+
+					//print_r( $MESSAGES );
+	
+					foreach( $data->message->tool_calls as $tool_call )
+					{
+						$function_name = $tool_call->function->name ;
+
+						echo "\033[34m[TOOL]\033[0m->$function_name".PHP_EOL;
+						
+						switch( $function_name )
+						{
+							case 'get_datetime' :
+								$date_time = date( DATE_COOKIE );
+								$MESSAGES[] = [ 
+									'role' => 'tool' ,
+									'content' => "$date_time" ,
+									'name' => $function_name ,
+									'model' => $CURRENT_MODEL_ID , // not required by Ollama, but allow to remember which model acted
+								];
+							break;
+						}
+					}
+				}
+				else
+				if ( isset( $data->message->content ) )
+				{
+					echo $data->message->content ;
+
+					$ANSWER .= $data->message->content ;
+
+					if ( $data->done )
+					{
+						$MESSAGES[] = [
+							'role' => $data->message->role ,
+							'content' => $ANSWER ,
+							'model' => $CURRENT_MODEL_ID , // not required by Ollama, but allow to remember which model answered
+							'done_reason' =>$data->done_reason ,
+						];
+						echo PHP_EOL.PHP_EOL;
+
+						$ANSWER = '';
+					}
+				}
+				else
+				{
+					error( __LINE__ , print_r( $data , true ) );
+				}
+
+				return $return;
+			}
+
+			error( __LINE__ ,  'JSON : '.json_last_error_msg() ) ;
+			return 0 ;
+		},
+	]);
+
+	$response = curl_exec( $curl );
+
+	if ( $response === false )
+	{
+		error( __LINE__ , 'cURL : '.curl_error( $curl ) );
+	}
+
+	curl_close( $curl );
+}
+
 // ----- Main code -----------------------------------------------------------------------------------------------------
 
 echo "Ollama server  : $OLLAMA_SERVER".PHP_EOL;
@@ -335,114 +452,9 @@ while( true )
 		echo PHP_EOL;
 	}
 
-	$curl = curl_init();
+	ollama_chat( $OLLAMA_SERVER , $CURRENT_MODEL_ID , $MESSAGES , in_array( 'tools' , $CURRENT_MODEL_INFO->capabilities ) );
 
-	$CURL_POSTFIELDS = [
-		'model' => $CURRENT_MODEL_ID ,
-		'messages' => $MESSAGES ,
-		'stream' => true ,
-
-		'options' => [
-			'num_ctx' => 8192 ,
-		],
-	];
-
-	if ( in_array( 'tools' , $CURRENT_MODEL_INFO->capabilities ) )
-	{
-		$CURL_POSTFIELDS[ 'tools' ] =  [
-			[ 'type' => 'function' ,
-				'function' => [
-					'name' => 'get_datetime',
-					'description' => 'Get actual current date time in DATE_COOKIE format',
-					//'parameters' => [],
-				],
-			],
-		];
-	}
-
-
-	curl_setopt_array( $curl , 
-	[
-		CURLOPT_URL => "$OLLAMA_SERVER/api/chat" ,
-		CURLOPT_POST => 1 ,
-		CURLOPT_POSTFIELDS => json_encode( $CURL_POSTFIELDS ) ,
-		CURLOPT_HTTPHEADER => [ 'Content-Type: application/json' ] ,
-		CURLOPT_RETURNTRANSFER => FALSE ,
-		CURLOPT_WRITEFUNCTION => function( $curl , $data )
-		{
-			global $MESSAGES , $CURRENT_MODEL_ID ;
-
-			static $ANSWER = '';
-
-			if ( json_validate( $data ) )
-			{
-				$return = strlen( $data );
-
-				$data = json_decode( $data );
-
-				//print_r( $data );
-
-				if ( isset( $data->message->tool_calls ) )
-				{
-					foreach( $data->message->tool_calls as $tool_call )
-					{
-						$function_name = $tool_call->function->name ;
-
-						echo "\033[34m[TOOL]\033[0m->$function_name".PHP_EOL;
-						
-						switch( $function_name )
-						{
-							case 'get_datetime' :
-								$date_time = date( DATE_COOKIE );
-								$MESSAGES[] = [ 
-									'role' => 'tool' ,
-									'content' => "$function_name = $date_time" ,
-									'model' => $CURRENT_MODEL_ID , // not required by Ollama, but allow to remember which model acted
-								];
-							break;
-						}
-					}
-				}
-				else
-				if ( isset( $data->message->content ) )
-				{
-					echo $data->message->content ;
-
-					$ANSWER .= $data->message->content ;
-
-					if ( $data->done )
-					{
-						$MESSAGES[] = [
-							'role' => $data->message->role ,
-							'content' => $ANSWER ,
-							'model' => $CURRENT_MODEL_ID , // not required by Ollama, but allow to remember which model answered
-						];
-						echo PHP_EOL.PHP_EOL;
-
-						$ANSWER = '';
-					}
-				}
-				else
-				{
-					error( __LINE__ , print_r( $data , true ) );
-				}
-
-				return $return;
-			}
-
-			error( __LINE__ ,  'JSON : '.json_last_error_msg() ) ;
-			return 0 ;
-		},
-	]);
-
-	$response = curl_exec( $curl );
-
-	if ( $response === false )
-	{
-		error( __LINE__ , 'cURL : '.curl_error( $curl ) );
-	}
-
-	curl_close( $curl );
+	//print_r( $MESSAGES );
 
 } // wend of main loop
 
